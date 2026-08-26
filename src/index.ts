@@ -8,7 +8,7 @@ app.use(express.json())
 
 try{
 mongoose.connect(process.env.mongodblocalhostlink??'')
-.then(()=>console.log('the youtube database connetced'))
+.then(()=>console.log('the pet_planet database connetced'))
 .catch((err)=>console.log('there error in db '+err))
 }catch(err){
 console.log('erro in connected with Db  '+err)
