@@ -1389,4 +1389,315 @@ router.delete(
     }
 )
 
+
+router.get(
+    '/users',
+    adminmilldelwares,
+    async (req: any, res) => {
+
+        try {
+
+            const users = await UserModel.find().lean()
+
+            res.status(200).json({
+                message: 'Users retrieved successfully',
+                count: users.length,
+                users
+            })
+
+        } catch (err) {
+
+            console.error(err)
+
+            res.status(500).json({
+                message: 'Error getting users',
+                error: err
+            })
+
+        }
+    }
+)
+
+
+
+
+
+
+
+router.get(
+    '/users/:id',
+    adminmilldelwares,
+    async (req: any, res) => {
+
+        try {
+
+            const { id } = req.params
+
+            const user = await UserModel
+                .findOne({
+                    IdForLogin: id
+                })
+                .lean()
+
+            if (!user) {
+                res.status(404).json({
+                    message: 'User not found'
+                })
+                return
+            }
+
+            const pets = await PetModel
+                .find({
+                    ownerId: user.IdForLogin
+                })
+                .lean()
+
+            res.status(200).json({
+                message: 'User retrieved successfully',
+
+                user: {
+                    ...user,
+                    pets
+                }
+            })
+
+        } catch (err) {
+
+            console.error(err)
+
+            res.status(500).json({
+                message: 'Error getting user',
+                error: err
+            })
+
+        }
+    }
+)
+
+
+
+
+
+router.get(
+    '/users/count',
+    adminmilldelwares,
+    async (req: any, res) => {
+
+        try {
+
+            const totalUsers = await UserModel.countDocuments()
+
+            res.status(200).json({
+                message: 'Users count retrieved successfully',
+                totalUsers
+            })
+
+        } catch (err) {
+
+            console.error(err)
+
+            res.status(500).json({
+                message: 'Error getting users count',
+                error: err
+            })
+
+        }
+    }
+)
+router.get(
+    '/pets/statistics',
+    adminmilldelwares,
+    async (req: any, res) => {
+
+        try {
+
+            const totalPets = await PetModel.countDocuments()
+
+            const stable = await PetModel.countDocuments({
+                status: 'stable'
+            })
+
+            const critical = await PetModel.countDocuments({
+                status: 'critical'
+            })
+
+            const improving = await PetModel.countDocuments({
+                status: 'improving'
+            })
+
+            const Euthanized = await PetModel.countDocuments({
+                status: 'Euthanized'
+            })
+
+            res.status(200).json({
+
+                message: 'Pet statistics retrieved successfully',
+
+                totalPets,
+
+                status: {
+                    stable,
+                    critical,
+                    improving,
+                    Euthanized
+                }
+
+            })
+
+        } catch (err) {
+
+            console.error(err)
+
+            res.status(500).json({
+                message: 'Error getting pet statistics',
+                error: err
+            })
+
+        }
+    }
+)
+
+
+
+
+router.get(
+    '/pets/filter',
+    adminmilldelwares,
+    async (req: any, res) => {
+
+        try {
+
+            const {
+                status,
+                species,
+                sex,
+                category
+            } = req.query
+
+            const filter: any = {}
+
+            if (status) {
+                filter.status = status
+            }
+
+            if (species) {
+                filter.species = species
+            }
+
+            if (sex) {
+                filter.sex = sex
+            }
+
+            if (category) {
+                filter.category = category
+            }
+
+            const pets = await PetModel
+                .find(filter)
+                .lean()
+
+            res.status(200).json({
+
+                message: 'Pets filtered successfully',
+
+                count: pets.length,
+
+                filters: {
+                    status: status || null,
+                    species: species || null,
+                    sex: sex || null,
+                    category: category || null
+                },
+
+                pets
+
+            })
+
+        } catch (err) {
+
+            console.error(err)
+
+            res.status(500).json({
+                message: 'Error filtering pets',
+                error: err
+            })
+
+        }
+    }
+)
+
+
+
+
+router.get(
+    '/pets/:petId',
+    adminmilldelwares,
+    async (req: any, res) => {
+
+        try {
+
+            const { petId } = req.params
+
+            if (!mongoose.Types.ObjectId.isValid(petId)) {
+                res.status(400).json({
+                    message: 'Invalid pet ID'
+                })
+                return
+            }
+
+            // Get pet
+            const pet = await PetModel
+                .findById(petId)
+                .lean()
+
+            if (!pet) {
+                res.status(404).json({
+                    message: 'Pet not found'
+                })
+                return
+            }
+
+            // Get vitals
+            const vitals = await VitalModel
+                .find({ petId })
+                .sort({ date: -1 })
+                .lean()
+
+            // Get treatments
+            const treatments = await TreatmentModel
+                .find({ petId })
+                .sort({ date: -1 })
+                .lean()
+
+            // Get images
+            const petImages = await PetImageModel
+                .findOne({ petId })
+                .lean()
+
+            res.status(200).json({
+
+                message: 'Pet data retrieved successfully',
+
+                pet,
+
+                vitals,
+
+                treatments,
+
+                images: petImages?.images || []
+
+            })
+
+        } catch (err) {
+
+            console.error(err)
+
+            res.status(500).json({
+                message: 'Error getting pet data',
+                error: err
+            })
+
+        }
+    }
+)
 export default router
