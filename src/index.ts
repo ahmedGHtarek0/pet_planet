@@ -5,6 +5,7 @@ import Auth from './Routes/Auth'
 import { createClient } from 'redis';
 import { UserModel } from './Database/Auth';
 import AdminRoutes from './Routes/AdminRoutes';
+import { v2 as cloudinary } from 'cloudinary'
 dotenv.config()
 const app = express()
 const port=3001
@@ -38,6 +39,17 @@ await client.connect();
 }
 redis()
 
+
+//cloudinary connection
+
+
+cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME ?? '',
+    api_key: process.env.CLOUDINARY_API_KEY ?? '',
+    api_secret: process.env.CLOUDINARY_API_SECRET ?? ''
+})
+
+export default cloudinary
 
 app.use('/Auth',Auth)
 app.use('/Admin',AdminRoutes)
