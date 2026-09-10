@@ -6,6 +6,7 @@ import { createClient } from 'redis';
 import { UserModel } from './Database/Auth';
 import AdminRoutes from './Routes/AdminRoutes';
 import { v2 as cloudinary } from 'cloudinary'
+import userroutes from './Routes/userroutes';
 dotenv.config()
 const app = express()
 const port=3001
@@ -53,6 +54,7 @@ export default cloudinary
 
 app.use('/Auth',Auth)
 app.use('/Admin',AdminRoutes)
+app.use('/User',userroutes)
 app.listen(port,()=>{
     console.log(`the serevr is connect to the localhost http://loaclhost:${port}`)
 })
