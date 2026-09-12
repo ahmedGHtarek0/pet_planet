@@ -8,6 +8,7 @@ import cors from 'cors'
 import AdminRoutes from './Routes/AdminRoutes';
 import { v2 as cloudinary } from 'cloudinary'
 import userroutes from './Routes/userroutes';
+import OrderRoutes from './Routes/OrderRoutes';
 dotenv.config()
 const app = express()
 const port=3001
@@ -58,6 +59,7 @@ export default cloudinary
 app.use('/Auth',Auth)
 app.use('/Admin',AdminRoutes)
 app.use('/User',userroutes)
+app.use('/User',OrderRoutes)
 app.listen(port,()=>{
     console.log(`the serevr is connect to the localhost http://loaclhost:${port}`)
 })

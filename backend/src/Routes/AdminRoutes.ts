@@ -15,6 +15,8 @@ import { Category, CategorySchemaZod } from '../Database/category'
 import { addnewcategory, deletecategory, updatethecategory } from '../Services/AdminE-commrce'
 import { upload } from '../middlewares/imageforitems'
 import { Product } from '../Database/PerUnite'
+import { OrderModel, OrderStatusValidator } from '../Database/Order'
+import { AdminPaymentModel, AdminPaymentValidator } from '../Database/AdminPayment'
 const router =express.Router()
 //update the    IdForLogin for admin broo 
 router.put('/updateIdForLogin',adminmilldelwares,async(req:any,res)=>{
@@ -2634,6 +2636,459 @@ router.get('/getcategory/:id', async (req, res) => {
         });
     }
 });
+
+
+// ==========================================
+// ADMIN - ORDER MANAGEMENT
+// ==========================================
+
+router.get('/orders', adminmilldelwares, async (req: any, res) => {
+    try {
+        const { status, paymentMethod, search } = req.query
+
+        const filter: any = {}
+
+        if (status) {
+            filter.status = status
+        }
+
+        if (paymentMethod) {
+            filter.paymentMethod = paymentMethod
+        }
+
+        if (search) {
+            filter.$or = [
+                { userId: { $regex: search, $options: 'i' } },
+                { phone: { $regex: search, $options: 'i' } },
+                { address: { $regex: search, $options: 'i' } }
+            ]
+        }
+
+        const orders = await OrderModel
+            .find(filter)
+            .sort({ createdAt: -1 })
+            .lean()
+
+        res.status(200).json({
+            message: 'Orders retrieved successfully',
+            count: orders.length,
+            filters: {
+                status: status || null,
+                paymentMethod: paymentMethod || null,
+                search: search || null
+            },
+            orders
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({
+            message: 'Error getting orders',
+            error: err
+        })
+    }
+})
+
+router.get('/orders/statistics', adminmilldelwares, async (req: any, res) => {
+    try {
+        const totalOrders = await OrderModel.countDocuments()
+        const pending = await OrderModel.countDocuments({ status: 'pending' })
+        const confirmed = await OrderModel.countDocuments({ status: 'confirmed' })
+        const shipped = await OrderModel.countDocuments({ status: 'shipped' })
+        const delivered = await OrderModel.countDocuments({ status: 'delivered' })
+        const cancelled = await OrderModel.countDocuments({ status: 'cancelled' })
+        const rejected = await OrderModel.countDocuments({ status: 'rejected' })
+
+        const allOrders = await OrderModel.find().lean()
+        const totalRevenue = allOrders
+            .filter((o: any) => o.status === 'delivered')
+            .reduce((sum: number, o: any) => sum + o.totalPrice, 0)
+
+        res.status(200).json({
+            message: 'Order statistics retrieved successfully',
+            totalOrders,
+            status: {
+                pending,
+                confirmed,
+                shipped,
+                delivered,
+                cancelled,
+                rejected
+            },
+            totalRevenue
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({
+            message: 'Error getting order statistics',
+            error: err
+        })
+    }
+})
+
+router.get('/orders/:id', adminmilldelwares, async (req: any, res) => {
+    try {
+        const { id } = req.params
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            res.status(400).json({
+                message: 'Invalid order ID'
+            })
+            return
+        }
+
+        const order = await OrderModel.findById(id).lean()
+
+        if (!order) {
+            res.status(404).json({
+                message: 'Order not found'
+            })
+            return
+        }
+
+        res.status(200).json({
+            message: 'Order retrieved successfully',
+            order
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({
+            message: 'Error getting order',
+            error: err
+        })
+    }
+})
+
+router.put('/orders/update-status/:id', adminmilldelwares, async (req: any, res) => {
+    try {
+        const { id } = req.params
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            res.status(400).json({
+                message: 'Invalid order ID'
+            })
+            return
+        }
+
+        const result = OrderStatusValidator.safeParse(req.body)
+
+        if (!result.success) {
+            res.status(400).json({
+                message: 'Invalid data',
+                errors: result.error
+            })
+            return
+        }
+
+        const order = await OrderModel.findById(id)
+
+        if (!order) {
+            res.status(404).json({
+                message: 'Order not found'
+            })
+            return
+        }
+
+        const validTransitions: Record<string, string[]> = {
+            'pending': ['confirmed', 'rejected'],
+            'confirmed': ['shipped', 'rejected'],
+            'shipped': ['delivered'],
+            'delivered': [],
+            'cancelled': [],
+            'rejected': []
+        }
+
+        if (!validTransitions[order.status]?.includes(result.data.status)) {
+            res.status(400).json({
+                message: `Cannot change order status from '${order.status}' to '${result.data.status}'`
+            })
+            return
+        }
+
+        order.status = result.data.status as any
+        await order.save()
+
+        res.status(200).json({
+            message: 'Order status updated successfully',
+            order
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({
+            message: 'Error updating order status',
+            error: err
+        })
+    }
+})
+
+router.put('/orders/cancel/:id', adminmilldelwares, async (req: any, res) => {
+    try {
+        const { id } = req.params
+        const { cancelReason } = req.body
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            res.status(400).json({
+                message: 'Invalid order ID'
+            })
+            return
+        }
+
+        const order = await OrderModel.findById(id)
+
+        if (!order) {
+            res.status(404).json({
+                message: 'Order not found'
+            })
+            return
+        }
+
+        if (order.status === 'cancelled' || order.status === 'rejected') {
+            res.status(400).json({
+                message: 'Order is already cancelled or rejected'
+            })
+            return
+        }
+
+        if (order.status === 'delivered') {
+            res.status(400).json({
+                message: 'Cannot cancel a delivered order'
+            })
+            return
+        }
+
+        order.status = 'cancelled'
+        order.cancelledBy = 'admin'
+        order.cancelReason = cancelReason || 'Cancelled by admin'
+        await order.save()
+
+        res.status(200).json({
+            message: 'Order cancelled successfully by admin',
+            order
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({
+            message: 'Error cancelling order',
+            error: err
+        })
+    }
+})
+
+
+// ==========================================
+// ADMIN - PAYMENT SETTINGS (manually add numbers)
+// ==========================================
+
+router.get('/payment-settings', adminmilldelwares, async (req: any, res) => {
+    try {
+        let paymentSettings = await AdminPaymentModel.findOne().lean()
+
+        if (!paymentSettings) {
+            paymentSettings = await AdminPaymentModel.create({
+                instapayNumber: '',
+                vodafoneCashNumber: '',
+                instapayName: '',
+                vodafoneCashName: '',
+                isActive: true
+            })
+        }
+
+        res.status(200).json({
+            message: 'Payment settings retrieved successfully',
+            payment: paymentSettings
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({
+            message: 'Error getting payment settings',
+            error: err
+        })
+    }
+})
+
+router.put('/payment-settings', adminmilldelwares, async (req: any, res) => {
+    try {
+        const result = AdminPaymentValidator.safeParse(req.body)
+
+        if (!result.success) {
+            res.status(400).json({
+                message: 'Invalid data',
+                errors: result.error
+            })
+            return
+        }
+
+        let paymentSettings = await AdminPaymentModel.findOne()
+
+        if (!paymentSettings) {
+            const { instapayNumber, vodafoneCashNumber, instapayName, vodafoneCashName, isActive } = result.data
+            paymentSettings = await AdminPaymentModel.create({
+                instapayNumber: instapayNumber ?? '',
+                vodafoneCashNumber: vodafoneCashNumber ?? '',
+                instapayName: instapayName ?? '',
+                vodafoneCashName: vodafoneCashName ?? '',
+                isActive: isActive ?? true
+            })
+        } else {
+            if (result.data.instapayNumber !== undefined) {
+                paymentSettings.instapayNumber = result.data.instapayNumber
+            }
+            if (result.data.vodafoneCashNumber !== undefined) {
+                paymentSettings.vodafoneCashNumber = result.data.vodafoneCashNumber
+            }
+            if (result.data.instapayName !== undefined) {
+                paymentSettings.instapayName = result.data.instapayName
+            }
+            if (result.data.vodafoneCashName !== undefined) {
+                paymentSettings.vodafoneCashName = result.data.vodafoneCashName
+            }
+            if (result.data.isActive !== undefined) {
+                paymentSettings.isActive = result.data.isActive
+            }
+            await paymentSettings.save()
+        }
+
+        res.status(200).json({
+            message: 'Payment settings updated successfully',
+            payment: paymentSettings
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({
+            message: 'Error updating payment settings',
+            error: err
+        })
+    }
+})
+
+
+// ==========================================
+// USER - PRODUCT FILTERS (per shop / per category)
+// ==========================================
+
+router.get('/products/filter', adminmilldelwares, async (req: any, res) => {
+    try {
+        const {
+            category,
+            soldBy,
+            minPrice,
+            maxPrice,
+            inStock,
+            search,
+            sortBy
+        } = req.query
+
+        const filter: any = {}
+
+        if (category) {
+            filter.category = category
+        }
+
+        if (soldBy) {
+            filter.soldBy = soldBy
+        }
+
+        if (minPrice || maxPrice) {
+            filter.price = {}
+            if (minPrice) filter.price.$gte = Number(minPrice)
+            if (maxPrice) filter.price.$lte = Number(maxPrice)
+        }
+
+        if (inStock !== undefined) {
+            filter.inStock = inStock === 'true'
+        }
+
+        if (search) {
+            filter.$or = [
+                { productName: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } }
+            ]
+        }
+
+        let sortOption: any = { createdAt: -1 }
+
+        if (sortBy === 'price-asc') {
+            sortOption = { price: 1 }
+        } else if (sortBy === 'price-desc') {
+            sortOption = { price: -1 }
+        } else if (sortBy === 'name') {
+            sortOption = { productName: 1 }
+        } else if (sortBy === 'popular') {
+            sortOption = { numberOfBuying: -1 }
+        }
+
+        const products = await Product
+            .find(filter)
+            .sort(sortOption)
+            .lean()
+
+        res.status(200).json({
+            message: 'Products filtered successfully',
+            count: products.length,
+            filters: {
+                category: category || null,
+                soldBy: soldBy || null,
+                minPrice: minPrice || null,
+                maxPrice: maxPrice || null,
+                inStock: inStock || null,
+                search: search || null,
+                sortBy: sortBy || null
+            },
+            products
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({
+            message: 'Error filtering products',
+            error: err
+        })
+    }
+})
+
+router.get('/products/per-shop', adminmilldelwares, async (req: any, res) => {
+    try {
+        const productsByCategory = await Product.aggregate([
+            {
+                $group: {
+                    _id: '$category',
+                    totalProducts: { $sum: 1 },
+                    totalInStock: {
+                        $sum: { $cond: ['$inStock', 1, 0] }
+                    },
+                    totalOutOfStock: {
+                        $sum: { $cond: ['$inStock', 0, 1] }
+                    },
+                    totalBuying: { $sum: '$numberOfBuying' },
+                    products: {
+                        $push: {
+                            _id: '$_id',
+                            productName: '$productName',
+                            price: '$price',
+                            soldBy: '$soldBy',
+                            photos: '$photos',
+                            inStock: '$inStock',
+                            numberOfBuying: '$numberOfBuying'
+                        }
+                    }
+                }
+            },
+            {
+                $sort: { totalProducts: -1 }
+            }
+        ])
+
+        res.status(200).json({
+            message: 'Products per shop retrieved successfully',
+            count: productsByCategory.length,
+            shops: productsByCategory
+        })
+    } catch (err) {
+        console.error(err)
+        res.status(500).json({
+            message: 'Error getting products per shop',
+            error: err
+        })
+    }
+})
 
 
 export default router
