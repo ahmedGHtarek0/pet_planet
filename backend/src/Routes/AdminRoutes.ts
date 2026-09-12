@@ -10,6 +10,11 @@ import PetImageModel from '../Database/Images'
 import { uploadImages } from '../middlewares/UploadMiddleware'
 import { uploadToCloudinary } from '../middlewares/UploadToCloudinary'
 import cloudinary from '..'
+import { safeParse } from 'zod'
+import { Category, CategorySchemaZod } from '../Database/category'
+import { addnewcategory, deletecategory, updatethecategory } from '../Services/AdminE-commrce'
+import { upload } from '../middlewares/imageforitems'
+import { Product } from '../Database/PerUnite'
 const router =express.Router()
 //update the    IdForLogin for admin broo 
 router.put('/updateIdForLogin',adminmilldelwares,async(req:any,res)=>{
@@ -1424,6 +1429,38 @@ router.get(
 
 
 
+
+
+
+
+router.get(
+    '/users/count',
+    adminmilldelwares,
+    async (req: any, res) => {
+
+        try {
+
+            const totalUsers = await UserModel.countDocuments()
+
+            res.status(200).json({
+                message: 'Users count retrieved successfully',
+                totalUsers
+            })
+
+        } catch (err) {
+
+            console.error(err)
+
+            res.status(500).json({
+                message: 'Error getting users count',
+                error: err
+            })
+
+        }
+    }
+)
+
+
 router.get(
     '/users/:id',
     adminmilldelwares,
@@ -1476,34 +1513,6 @@ router.get(
 
 
 
-
-
-router.get(
-    '/users/count',
-    adminmilldelwares,
-    async (req: any, res) => {
-
-        try {
-
-            const totalUsers = await UserModel.countDocuments()
-
-            res.status(200).json({
-                message: 'Users count retrieved successfully',
-                totalUsers
-            })
-
-        } catch (err) {
-
-            console.error(err)
-
-            res.status(500).json({
-                message: 'Error getting users count',
-                error: err
-            })
-
-        }
-    }
-)
 router.get(
     '/pets/statistics',
     adminmilldelwares,
@@ -1700,4 +1709,933 @@ router.get(
         }
     }
 )
+//Add All E-commerce Routes
+//Add Catgeory 
+router.post('/addcategory',adminmilldelwares,async (req,res)=>{
+    try{
+    const Data=CategorySchemaZod.safeParse(req.body)
+    if(!Data.success){
+        res.status(400).json({
+            message: 'Invalid category data',
+            error: Data.error
+        })
+        return
+    }
+    const {name}=Data.data
+    if(!name){
+        res.status(400).json({message:'the name is  not exsists'})
+        return 
+    }
+    const {data,status}=await addnewcategory({name})
+    if(!data||!status){
+        res.status(400).json({message:'the data and the status  is requried bro '})
+    }
+    res.status(status).json({data})
+}catch(err){
+    console.error(err)
+
+            res.status(500).json({
+                message: 'Error  add a new category',
+                error: err
+            })
+}
+})
+
+//update the category 
+
+router.post('/updatecategory/:iD', adminmilldelwares, async (req, res) => {
+    try {
+        const { iD } = req.params
+
+        if (!iD) {
+            res.status(400).json({
+                message: 'The ID is required'
+            })
+            return
+        }
+
+       
+
+        const id = new mongoose.Types.ObjectId(iD)
+
+        const Data = CategorySchemaZod.safeParse(req.body)
+
+        if (!Data.success) {
+            res.status(400).json({
+                message: 'Invalid category data',
+                error: Data.error
+            })
+            return
+        }
+
+        const { name } = Data.data
+
+        if (!name) {
+            res.status(400).json({
+                message: 'The name is required'
+            })
+            return
+        }
+
+        const { data, status } = await updatethecategory({
+            name,
+            id
+        })
+
+        if (!data || !status) {
+            res.status(400).json({
+                message: 'The data and status are required'
+            })
+            return
+        }
+
+        res.status(status).json({
+            data
+        })
+
+    } catch (err) {
+        console.error(err)
+
+        res.status(500).json({
+            message: 'Error update  category',
+            error: err
+        })
+    }
+})
+
+//delete the category
+router.delete( '/deletecategory/:iD', adminmilldelwares, async (req, res) => { 
+    try { const { iD } = req.params;
+     if (!iD) { 
+        res.status(400).json({ message: 'The ID is required' });
+         return; 
+        } if (!mongoose.Types.ObjectId.isValid(iD)) 
+            { res.status(400).json({ message: 'Invalid category ID' });
+             return; 
+            } 
+            const id = new mongoose.Types.ObjectId(iD); 
+            const { data, status } = await deletecategory({ id });
+             if (!data || !status) {
+                 res.status(400).json({ message: 'The data and status are required' });
+                  return;
+                 } res.status(status).json({ data }); 
+                } catch (err) { console.error(err); 
+                    res.status(500).json({ message: 'Error deleting category', error: err });
+                 } 
+                } 
+            );
+
+//send all filter 
+router.get('/getallcategory', adminmilldelwares, async (req, res) => {
+    try {
+        const allcategory = await Category.find();
+        res.status(200).json({ data: allcategory });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error fetching categories', error: err });
+    }
+})
+//get the filter on sort from  big to small 
+router.get('/getcatgeorysort', adminmilldelwares, async (req, res) => {
+    try {
+        const allcategory = await Category
+            .find()
+            .sort({ Number: -1 });
+
+        res.status(200).json({
+            data: allcategory
+        });
+
+    } catch (err) {
+        console.error(err);
+
+        res.status(500).json({
+            message: 'Error sorting categories',
+            error: err
+        });
+    }
+});
+//crud operations on items 
+router.post(
+    '/additem',
+    adminmilldelwares,
+    upload.array('photos', 3),
+    async (req, res) => {
+        try {
+
+            // =========================
+            // 1. Get photos
+            // =========================
+
+            const files = req.files as Express.Multer.File[];
+
+            if (!files || files.length < 1) {
+                res.status(400).json({
+                    message: 'At least one photo is required'
+                });
+                return;
+            }
+
+            if (files.length > 3) {
+                res.status(400).json({
+                    message: 'You can upload maximum 3 photos'
+                });
+                return;
+            }
+
+
+            // =========================
+            // 2. Get body data
+            // =========================
+
+            const {
+                productName,
+                description,
+                soldBy,
+                price,
+                category,
+                minWeight,
+                maxWeight
+            } = req.body;
+
+
+            // =========================
+            // 3. Check required fields
+            // =========================
+
+            if (!productName) {
+                res.status(400).json({
+                    message: 'Product name is required'
+                });
+                return;
+            }
+
+            if (!description) {
+                res.status(400).json({
+                    message: 'Description is required'
+                });
+                return;
+            }
+
+            if (!soldBy) {
+                res.status(400).json({
+                    message: 'soldBy is required'
+                });
+                return;
+            }
+
+            if (soldBy !== 'unit' && soldBy !== 'weight') {
+                res.status(400).json({
+                    message: 'soldBy must be unit or weight'
+                });
+                return;
+            }
+
+            if (!price) {
+                res.status(400).json({
+                    message: 'Price is required'
+                });
+                return;
+            }
+
+            if (!category) {
+                res.status(400).json({
+                    message: 'Category is required'
+                });
+                return;
+            }
+
+
+
+
+            // =========================
+            // 5. Check category exists
+            // =========================
+
+            const categoryExists = await Category.findOne({ name: category });
+
+            if (!categoryExists) {
+                res.status(404).json({
+                    message: 'Category does not exist'
+                });
+                return;
+            }
+
+
+            // =========================
+            // 6. Weight validation
+            // =========================
+
+            if (soldBy === 'weight') {
+
+                if (!minWeight || !maxWeight) {
+                    res.status(400).json({
+                        message: 'minWeight and maxWeight are required for weight products'
+                    });
+                    return;
+                }
+
+                const minimum = Number(minWeight);
+                const maximum = Number(maxWeight);
+
+                if (minimum < 0.5) {
+                    res.status(400).json({
+                        message: 'Minimum weight must be at least 0.5 kg'
+                    });
+                    return;
+                }
+
+                if (maximum > 100) {
+                    res.status(400).json({
+                        message: 'Maximum weight cannot exceed 100 kg'
+                    });
+                    return;
+                }
+
+                if (minimum > maximum) {
+                    res.status(400).json({
+                        message: 'minWeight cannot be greater than maxWeight'
+                    });
+                    return;
+                }
+
+                if (minimum % 0.5 !== 0 || maximum % 0.5 !== 0) {
+                    res.status(400).json({
+                        message: 'Weight must be in increments of 0.5 kg'
+                    });
+                    return;
+                }
+            }
+
+
+            // =========================
+            // 7. Upload photos
+            // =========================
+
+            const photoUrls: string[] = [];
+
+            for (const file of files) {
+
+                const result = await new Promise<any>((resolve, reject) => {
+
+                    const stream = cloudinary.uploader.upload_stream(
+                        {
+                            folder: 'pet_planet'
+                        },
+                        (error, result) => {
+
+                            if (error) {
+                                reject(error);
+                                return;
+                            }
+
+                            resolve(result);
+                        }
+                    );
+
+                    stream.end(file.buffer);
+                });
+
+                photoUrls.push(result.secure_url);
+            }
+
+
+            // =========================
+            // 8. Create product
+            // =========================
+
+            const productData: any = {
+                productName,
+                description,
+                soldBy,
+                price: Number(price),
+                photos: photoUrls,
+                category: new mongoose.Types.ObjectId(category),
+                inStock: true,
+                numberOfBuying: 0
+            };
+
+
+            // Only add weight fields
+            // if product is sold by weight
+
+            if (soldBy === 'weight') {
+                productData.minWeight = Number(minWeight);
+                productData.maxWeight = Number(maxWeight);
+            }
+
+
+            // =========================
+            // 9. Save product
+            // =========================
+
+            const newProduct = await Product.create(productData);
+            newProduct.save();
+            const getall= await Product.find()
+
+            // =========================
+            // 10. Response
+            // =========================
+
+            res.status(201).json({
+                message: 'Product added successfully',
+                data: newProduct,
+                all: getall
+            });
+
+        } catch (err) {
+
+            console.error(err);
+
+            res.status(500).json({
+                message: 'Error adding product',
+                error: err
+            });
+        }
+    }
+);
+router.delete(
+    '/deleteitem/:id',
+    adminmilldelwares,
+    async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            if (!id) {
+                res.status(400).json({
+                    message: 'Product ID is required'
+                });
+                return;
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                res.status(400).json({
+                    message: 'Invalid product ID'
+                });
+                return;
+            }
+
+            const product = await Product.findByIdAndDelete(id);
+            const getall= await Product.find()
+
+            if (!product) {
+                res.status(404).json({
+                    message: 'Product does not exist'
+                });
+                return;
+            }
+
+            res.status(200).json({
+                message: 'Product deleted successfully',
+                data: product,
+                all: getall
+            });
+
+        } catch (err) {
+            console.error(err);
+
+            res.status(500).json({
+                message: 'Error deleting product',
+                error: err
+            });
+        }
+    }
+);
+
+
+
+router.put(
+    '/updateitem/:iD',
+    adminmilldelwares,
+    upload.array('photos', 3),
+    async (req, res) => {
+        try {
+            const { iD } :any= req.params;
+
+            if (!iD) {
+                res.status(400).json({
+                    message: 'Product ID is required'
+                });
+                return;
+            }
+
+           
+const id= new mongoose.Types.ObjectId(iD);
+            const product = await Product.findById(id);
+
+            if (!product) {
+                res.status(404).json({
+                    message: 'Product does not exist'
+                });
+                return;
+            }
+            
+
+            const {
+                productName,
+                description,
+                soldBy,
+                price,
+                category,
+                inStock,
+                minWeight,
+                maxWeight
+            } = req.body;
+
+            // =========================
+            // Validate soldBy
+            // =========================
+
+            if (
+                soldBy &&
+                soldBy !== 'unit' &&
+                soldBy !== 'weight'
+        ) {
+                res.status(400).json({
+                    message: 'soldBy must be unit or weight'
+                });
+                return;
+            }
+
+            // =========================
+            // Validate category
+            // =========================
+
+          
+            if(!category){
+                res.status(400).json({
+                    message: 'Category is required'
+                });
+                return;
+            }
+                const categoryExists = await Category.findOne({name:category});
+
+                if (!categoryExists) {
+                    res.status(404).json({
+                        message: 'Category does not exist'
+                    });
+                    return;
+                }
+        
+
+            // =========================
+            // Determine selling type
+            // =========================
+
+            const currentSoldBy  = soldBy || product.soldBy;
+
+            // =========================
+            // Weight validation
+            // =========================
+
+            if (currentSoldBy === 'weight') {
+
+                const minimum =
+                    minWeight !== undefined
+                        ? Number(minWeight)
+                        : product.minWeight;
+
+                const maximum =
+                    maxWeight !== undefined
+                        ? Number(maxWeight)
+                        : product.maxWeight;
+
+                if (minimum === undefined || maximum === undefined) {
+                    res.status(400).json({
+                        message:
+                            'minWeight and maxWeight are required for weight products'
+                    });
+                    return;
+                }
+
+                if (minimum < 0.5) {
+                    res.status(400).json({
+                        message:
+                            'Minimum weight must be at least 0.5 kg'
+                    });
+                    return;
+                }
+
+                if (maximum > 100) {
+                    res.status(400).json({
+                        message:
+                            'Maximum weight cannot exceed 100 kg'
+                    });
+                    return;
+                }
+
+                if (minimum > maximum) {
+                    res.status(400).json({
+                        message:
+                            'minWeight cannot be greater than maxWeight'
+                    });
+                    return;
+                }
+
+                if (
+                    minimum % 0.5 !== 0 ||
+                    maximum % 0.5 !== 0
+                ) {
+                    res.status(400).json({
+                        message:
+                            'Weight must be in increments of 0.5 kg'
+                    });
+                    return;
+                }
+            }
+
+            // =========================
+            // Prepare update
+            // =========================
+
+            const updateData: any = {};
+
+            if (productName !== undefined)
+                updateData.productName = productName;
+
+            if (description !== undefined)
+                updateData.description = description;
+
+            if (soldBy !== undefined)
+                updateData.soldBy = soldBy;
+
+            if (price !== undefined)
+                updateData.price = Number(price);
+
+            if (category !== undefined)
+                updateData.category = category;
+
+            if (inStock !== undefined)
+                updateData.inStock =
+                    inStock === true || inStock === 'true';
+
+            // =========================
+            // Weight fields
+            // =========================
+
+            if (currentSoldBy === 'weight') {
+
+                if (minWeight !== undefined)
+                    updateData.minWeight = Number(minWeight);
+
+                if (maxWeight !== undefined)
+                    updateData.maxWeight = Number(maxWeight);
+
+            } else {
+
+                // If changed from weight → unit
+                updateData.minWeight = undefined;
+                updateData.maxWeight = undefined;
+            }
+
+            // =========================
+            // Photos
+            // =========================
+
+            const files = req.files as Express.Multer.File[];
+
+            if (files && files.length > 0) {
+
+                if (files.length > 3) {
+                    res.status(400).json({
+                        message:
+                            'You can upload maximum 3 photos'
+                    });
+                    return;
+                }
+
+                const photoUrls: string[] = [];
+
+                for (const file of files) {
+
+                    const result = await new Promise<any>(
+                        (resolve, reject) => {
+
+                            const stream =
+                                cloudinary.uploader.upload_stream(
+                                    {
+                                        folder: 'products'
+                                    },
+                                    (error, result) => {
+
+                                        if (error) {
+                                            reject(error);
+                                            return;
+                                        }
+
+                                        resolve(result);
+                                    }
+                                );
+
+                            stream.end(file.buffer);
+                        }
+                    );
+
+                    photoUrls.push(result.secure_url);
+                }
+
+                updateData.photos = photoUrls;
+            }
+
+            // =========================
+            // Update product
+            // =========================
+
+            const updatedProduct =
+                await Product.findByIdAndUpdate(
+                    id,
+                    updateData,
+                    {
+                        new: true,
+                        runValidators: true
+                    }
+                );
+                const getall= await Product.find()
+
+            res.status(200).json({
+                message: 'Product updated successfully',
+                data: updatedProduct,
+                all:getall
+            });
+
+        } catch (err) {
+
+            console.error(err);
+
+            res.status(500).json({
+                message: 'Error updating product',
+                error: err
+            });
+        }
+    }
+);
+
+
+
+
+router.get(
+    '/getallitems',
+    async (req, res) => {
+        try {
+            const allproducts = await Product.find();
+
+            res.status(200).json({
+                message: 'All products fetched successfully',
+                data: allproducts
+            });
+
+        } catch (err) {
+            console.error(err);
+
+            res.status(500).json({
+                message: 'Error fetching products',
+                error: err
+            });
+        }
+    }
+);
+
+
+
+router.get(
+    '/getitemsbycategory/:category',
+    async (req, res) => {
+        try {
+            const { category } = req.params;
+
+            if (!category) {
+                res.status(400).json({
+                    message: 'Category is required'
+                });
+                return;
+            }
+
+            const products = await Product.find({
+                category: category
+            });
+
+            if (products.length === 0) {
+                res.status(404).json({
+                    message: 'No products found in this category'
+                });
+                return;
+            }
+
+            res.status(200).json({
+                message: 'Products fetched successfully',
+                data: products
+            });
+
+        } catch (err) {
+            console.error(err);
+
+            res.status(500).json({
+                message: 'Error fetching products by category',
+                error: err
+            });
+        }
+    }
+);
+
+
+
+router.get(
+    '/getitemsbysales',
+    async (req, res) => {
+        try {
+            const products = await Product.find()
+                .sort({ numberOfBuying: -1 });
+
+            res.status(200).json({
+                message: 'Products sorted successfully',
+                data: products
+            });
+
+        } catch (err) {
+            console.error(err);
+
+            res.status(500).json({
+                message: 'Error sorting products',
+                error: err
+            });
+        }
+    }
+);
+
+router.get(
+    '/gettotalmoney',
+    async (req, res) => {
+        try {
+            const result = await Product.aggregate([
+                {
+                    $group: {
+                        _id: null,
+                        totalMoney: {
+                            $sum: '$price'
+                        }
+                    }
+                }
+            ]);
+
+            const totalMoney = result.length > 0
+                ? result[0].totalMoney
+                : 0;
+
+            res.status(200).json({
+                message: 'Total money calculated successfully',
+                totalMoney
+            });
+
+        } catch (err) {
+            console.error(err);
+
+            res.status(500).json({
+                message: 'Error calculating total money',
+                error: err
+            });
+        }
+    }
+);
+
+
+
+router.get(
+    '/getitem/:id',
+    async (req, res) => {
+        try {
+            const { id } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                res.status(400).json({
+                    message: 'Invalid product ID'
+                });
+                return;
+            }
+
+            const product = await Product.findById(id);
+
+            if (!product) {
+                res.status(404).json({
+                    message: 'Product does not exist'
+                });
+                return;
+            }
+
+            res.status(200).json({
+                message: 'Product fetched successfully',
+                data: product
+            });
+
+        } catch (err) {
+            console.error(err);
+
+            res.status(500).json({
+                message: 'Error fetching product',
+                error: err
+            });
+        }
+    }
+);
+
+
+router.get('/getallcategory/', async (req, res) => {
+    try {
+        const categories = await Category.find();
+
+        res.status(200).json({
+            message: 'Categories fetched successfully',
+            data: categories
+        });
+
+    } catch (err) {
+        console.error(err);
+
+        res.status(500).json({
+            message: 'Error fetching categories',
+            error: err
+        });
+    }
+});
+
+
+router.get('/getcategory/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            res.status(400).json({
+                message: 'Invalid category ID'
+            });
+            return;
+        }
+
+        const category = await Category.findById(
+            new mongoose.Types.ObjectId(id)
+        );
+
+        if (!category) {
+            res.status(404).json({
+                message: 'Category not found'
+            });
+            return;
+        }
+
+        res.status(200).json({
+            message: 'Category fetched successfully',
+            data: category
+        });
+
+    } catch (err) {
+        console.error(err);
+
+        res.status(500).json({
+            message: 'Error fetching category',
+            error: err
+        });
+    }
+});
+
+
 export default router
+
+

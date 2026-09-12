@@ -4,6 +4,7 @@ import dotenv from 'dotenv'
 import Auth from './Routes/Auth'
 import { createClient } from 'redis';
 import { UserModel } from './Database/Auth';
+import cors from 'cors'
 import AdminRoutes from './Routes/AdminRoutes';
 import { v2 as cloudinary } from 'cloudinary'
 import userroutes from './Routes/userroutes';
@@ -11,7 +12,9 @@ dotenv.config()
 const app = express()
 const port=3001
 app.use(express.json())
-
+app.use(cors({
+    origin: 'http://localhost:5173'
+}))
 //MongoDb connection 
 try{
 mongoose.connect(process.env.mongodblocalhostlink??'')
