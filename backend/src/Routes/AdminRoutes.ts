@@ -2969,12 +2969,9 @@ router.get('/products/filter', adminmilldelwares, async (req: any, res) => {
     try {
         const {
             category,
-            soldBy,
-            minPrice,
-            maxPrice,
+           
             inStock,
-            search,
-            sortBy
+           
         } = req.query
 
         const filter: any = {}
@@ -2983,55 +2980,25 @@ router.get('/products/filter', adminmilldelwares, async (req: any, res) => {
             filter.category = category
         }
 
-        if (soldBy) {
-            filter.soldBy = soldBy
-        }
 
-        if (minPrice || maxPrice) {
-            filter.price = {}
-            if (minPrice) filter.price.$gte = Number(minPrice)
-            if (maxPrice) filter.price.$lte = Number(maxPrice)
-        }
 
         if (inStock !== undefined) {
             filter.inStock = inStock === 'true'
         }
 
-        if (search) {
-            filter.$or = [
-                { productName: { $regex: search, $options: 'i' } },
-                { description: { $regex: search, $options: 'i' } }
-            ]
-        }
-
-        let sortOption: any = { createdAt: -1 }
-
-        if (sortBy === 'price-asc') {
-            sortOption = { price: 1 }
-        } else if (sortBy === 'price-desc') {
-            sortOption = { price: -1 }
-        } else if (sortBy === 'name') {
-            sortOption = { productName: 1 }
-        } else if (sortBy === 'popular') {
-            sortOption = { numberOfBuying: -1 }
-        }
 
         const products = await Product
-            .find(filter)
-            .sort(sortOption)
-            .lean()
+            .find()
+            
 
         res.status(200).json({
             message: 'Products filtered successfully',
             count: products.length,
             filters: {
                 category: category || null,
-                soldBy: soldBy || null,
-                minPrice: minPrice || null,
-                maxPrice: maxPrice || null,
+                
                 inStock: inStock || null,
-                search: search || null,
-                sortBy: sortBy || null
+               
             },
             products
         })
@@ -3044,51 +3011,7 @@ router.get('/products/filter', adminmilldelwares, async (req: any, res) => {
     }
 })
 
-router.get('/products/per-shop', adminmilldelwares, async (req: any, res) => {
-    try {
-        const productsByCategory = await Product.aggregate([
-            {
-                $group: {
-                    _id: '$category',
-                    totalProducts: { $sum: 1 },
-                    totalInStock: {
-                        $sum: { $cond: ['$inStock', 1, 0] }
-                    },
-                    totalOutOfStock: {
-                        $sum: { $cond: ['$inStock', 0, 1] }
-                    },
-                    totalBuying: { $sum: '$numberOfBuying' },
-                    products: {
-                        $push: {
-                            _id: '$_id',
-                            productName: '$productName',
-                            price: '$price',
-                            soldBy: '$soldBy',
-                            photos: '$photos',
-                            inStock: '$inStock',
-                            numberOfBuying: '$numberOfBuying'
-                        }
-                    }
-                }
-            },
-            {
-                $sort: { totalProducts: -1 }
-            }
-        ])
 
-        res.status(200).json({
-            message: 'Products per shop retrieved successfully',
-            count: productsByCategory.length,
-            shops: productsByCategory
-        })
-    } catch (err) {
-        console.error(err)
-        res.status(500).json({
-            message: 'Error getting products per shop',
-            error: err
-        })
-    }
-})
 
 
 export default router
